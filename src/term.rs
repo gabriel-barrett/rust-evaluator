@@ -1,7 +1,3 @@
-use std::{
-  rc::Rc,
-};
-
 #[derive(Debug, Clone, Copy)]
 pub enum Opr {
   Add,
@@ -11,10 +7,10 @@ pub enum Opr {
 }
 
 #[derive(Debug, Clone)]
-pub enum Term {
+pub enum Term<'a> {
   Var(usize),
-  Lam(Rc<Term>),
-  App(Rc<Term>, Rc<Term>),
+  Lam(&'a Term<'a>),
+  App(&'a Term<'a>, &'a Term<'a>),
   Ref(usize),
   Opr(Opr),
   Int(i64),
