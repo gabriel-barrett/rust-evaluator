@@ -16,3 +16,4 @@ pub enum Term<'a> {
   Int(i64),
 }
 
+pub type Defs<'a> = Vec<&'a Term<'a>>;

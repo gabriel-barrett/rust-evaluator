@@ -6,7 +6,6 @@ use crate::term::*;
 
 pub type Env<'a> = Vector<*mut Thunk<'a>>;
 pub type Args<'a> = Vec<*mut Thunk<'a>>;
-pub type Defs<'a> = Vec<&'a Term<'a>>;
 
 // TODO: implement non-recursive drop
 #[derive(Debug, Clone)]

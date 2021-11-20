@@ -1,24 +1,22 @@
 use std::{
-  boxed::Box,
   vec::Vec,
 };
 use im::Vector;
-use crate::term::*;
+use crate::block::*;
 
-pub type Thunk<'a> = (&'a Term<'a>, Env<'a>);
-pub type Env<'a> = Vector<*const Value<'a>>;
-pub type Args<'a> = Vec<Thunk<'a>>;
-pub type Defs<'a> = Vec<&'a Term<'a>>;
+pub type Thunk = (TermPtr, Env);
+pub type Env = Vector<*const Value>;
+pub type Args = Vec<Thunk>;
 
 #[derive(Debug, Clone)]
-pub enum Value<'a> {
-  Papp(Neutral, Args<'a>),
-  Lam(&'a Term<'a>, Env<'a>),
+pub enum Value {
+  Papp(Neutral, Args),
+  Lam(TermPtr, Env),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Neutral {
-  Var(usize),
+  Var(EnvPtr),
   Opr(Opr),
   Int(i64),
 }
@@ -34,19 +32,19 @@ pub fn opr_arity(opr: Opr) -> usize {
 }
 
 #[allow(non_camel_case_types)]
-pub enum State<'a> {
-  Eval(&'a Term<'a>, Env<'a>, Args<'a>),
-  EvalPlus(&'a Term<'a>, Env<'a>, Args<'a>),
-  Apply(Args<'a>),
-  Add(Args<'a>),
-  Sub(Args<'a>),
-  Mul(Args<'a>),
-  Eqz(Args<'a>),
+pub enum State {
+  Eval(TermPtr, Env, Args),
+  EvalPlus(TermPtr, Env, Args),
+  Apply(Args),
+  Add(Args),
+  Sub(Args),
+  Mul(Args),
+  Eqz(Args),
   RETURN,
 }
 
 #[inline(always)]
-pub fn force<'a>(cont_stack: &mut Vec<State<'a>>, thunk: Thunk<'a>) {
+pub fn force(cont_stack: &mut Vec<State>, thunk: Thunk) {
   match thunk {
     (sus_term, sus_env) => {
       let term = sus_term;
@@ -63,7 +61,7 @@ macro_rules! alloc {
 }
 
 #[inline(always)]
-pub fn reduce_opr<'a>(cont_stack: &mut Vec<State<'a>>, ret_stack: &mut Vec<*const Value<'a>>, opr: Opr, args: Args<'a>) {
+pub fn reduce_opr(cont_stack: &mut Vec<State>, ret_stack: &mut Vec<*const Value>, opr: Opr, args: Args) {
   if args.len() < opr_arity(opr) {
     ret_stack.push(alloc!(Value::Papp(Neutral::Opr(opr), args)));
   }
@@ -100,7 +98,7 @@ pub fn reduce_opr<'a>(cont_stack: &mut Vec<State<'a>>, ret_stack: &mut Vec<*cons
 }
 
 #[inline]
-pub fn eval<'a>(defs: &Defs<'a>, term: &'a Term<'a>, env: Env<'a>, args: Args<'a>) -> *const Value<'a> {
+pub fn eval(store: &Store, term: TermPtr, env: Env, args: Args) -> *const Value {
   unsafe {
     let mut cont_stack = vec![State::RETURN, State::Eval(term, env, args)];
     let mut ret_stack = vec![];
@@ -113,13 +111,13 @@ pub fn eval<'a>(defs: &Defs<'a>, term: &'a Term<'a>, env: Env<'a>, args: Args<'a
           cont_stack.push(State::Eval(term, env, args));
         },
         State::Eval(term, mut env, mut args) => {
-          match term {
-            Term::App(fun, arg) => {
-              let thunk = (*arg, env.clone());
+          match store[term] {
+            Block::App(fun, arg) => {
+              let thunk = (arg, env.clone());
               args.push(thunk);
               cont_stack.push(State::Eval(fun, env, args));
             },
-            Term::Lam(bod) => {
+            Block::Lam(bod) => {
               if args.len() == 0 {
                 ret_stack.push(alloc!(Value::Lam(bod, env.clone())));
               }
@@ -129,23 +127,23 @@ pub fn eval<'a>(defs: &Defs<'a>, term: &'a Term<'a>, env: Env<'a>, args: Args<'a
                 force(&mut cont_stack, thunk);
               }
             },
-            Term::Var(idx) => {
+            Block::Var(idx) => {
               cont_stack.push(State::Apply(args));
               let dep = env.len() - 1 - idx;
               let value = env[dep];
               ret_stack.push(value);
             },
-            Term::Opr(opr) => {
-              reduce_opr(&mut cont_stack, &mut ret_stack, *opr, args)
+            Block::Opr(opr) => {
+              reduce_opr(&mut cont_stack, &mut ret_stack, opr, args)
             },
-            Term::Int(int) => {
-              ret_stack.push(alloc!(Value::Papp(Neutral::Int(*int), args)));
+            Block::Int(int) => {
+              ret_stack.push(alloc!(Value::Papp(Neutral::Int(int), args)));
             },
-            Term::Ref(idx) => {
+            Block::Ref(idx) => {
               env.clear();
-              let term = defs[*idx];
-              cont_stack.push(State::Eval(term, env, args))
+              cont_stack.push(State::Eval(idx, env, args))
             },
+            Block::Impossible => unreachable!(),
           }
         },
         State::Apply(mut args) => {
@@ -164,7 +162,7 @@ pub fn eval<'a>(defs: &Defs<'a>, term: &'a Term<'a>, env: Env<'a>, args: Args<'a
               },
               Value::Lam(bod, lam_env) => {
                 let thunk = args.pop().unwrap();
-                cont_stack.push(State::EvalPlus(bod, lam_env.clone(), args));
+                cont_stack.push(State::EvalPlus(*bod, lam_env.clone(), args));
                 force(&mut cont_stack, thunk);
               },
             }
@@ -234,7 +232,7 @@ pub fn eval<'a>(defs: &Defs<'a>, term: &'a Term<'a>, env: Env<'a>, args: Args<'a
   }
 }
 
-pub fn print_int<'a>(val: *const Value<'a>) {
+pub fn print_int(val: *const Value) {
   unsafe {
     match &*val {
       Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
