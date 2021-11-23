@@ -1,5 +1,6 @@
 use std::{
   vec::Vec,
+  boxed::Box,
 };
 use im::Vector;
 use crate::term::*;
@@ -30,10 +31,10 @@ pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
 pub enum Neutral {
   FVar(usize),
   Int(i64),
-  Add(ValuePtr, ValuePtr),
-  Mul(ValuePtr, ValuePtr),
-  Sub(ValuePtr, ValuePtr),
-  Eqz(ValuePtr, Thunk, Thunk),
+  Add(Box<(ValuePtr, ValuePtr)>),
+  Mul(Box<(ValuePtr, ValuePtr)>),
+  Sub(Box<(ValuePtr, ValuePtr)>),
+  Eqz(Box<(ValuePtr, Thunk, Thunk)>),
 }
 
 pub type Heap = Vec<Value>;
@@ -109,7 +110,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
                 if p_args1.is_empty() && p_args2.is_empty() => {
                   ret_stack.push(papp(Neutral::Int(num1+num2), args, heap))
                 }
-              _ => ret_stack.push(papp(Neutral::Add(val1, val2), args, heap)),
+              _ => ret_stack.push(papp(Neutral::Add(Box::new((val1, val2))), args, heap)),
             }
           },
           Term::Sub(val1, val2) => {
@@ -121,7 +122,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
                 if p_args1.is_empty() && p_args2.is_empty() => {
                   ret_stack.push(papp(Neutral::Int(num1-num2), args, heap))
                 }
-              _ => ret_stack.push(papp(Neutral::Sub(val1, val2), args, heap)),
+              _ => ret_stack.push(papp(Neutral::Sub(Box::new((val1, val2))), args, heap)),
             }
           },
           Term::Mul(val1, val2) => {
@@ -133,7 +134,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
                 if p_args1.is_empty() && p_args2.is_empty() => {
                   ret_stack.push(papp(Neutral::Int(num1*num2), args, heap))
                 }
-              _ => ret_stack.push(papp(Neutral::Mul(val1, val2), args, heap)),
+              _ => ret_stack.push(papp(Neutral::Mul(Box::new((val1, val2))), args, heap)),
             }
           },
           Term::Eqz(val1, case1, case2) => {
@@ -150,7 +151,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
               _ => {
                 let case1 = (case1, env.clone());
                 let case2 = (case2, env.clone());
-                ret_stack.push(papp(Neutral::Eqz(val1, case1, case2), args, heap))
+                ret_stack.push(papp(Neutral::Eqz(Box::new((val1, case1, case2))), args, heap))
               },
             }
           },
