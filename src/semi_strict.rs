@@ -2,7 +2,7 @@ use std::{
   vec::Vec,
 };
 use im::Vector;
-use crate::block::*;
+use crate::term::*;
 
 pub type Thunk = (TermPtr, Env);
 pub type Env = Vector<*const Value>;
@@ -112,12 +112,12 @@ pub fn eval(store: &Store, term: TermPtr, env: Env, args: Args) -> *const Value 
         },
         State::Eval(term, mut env, mut args) => {
           match store[term] {
-            Block::App(fun, arg) => {
+            Term::App(fun, arg) => {
               let thunk = (arg, env.clone());
               args.push(thunk);
               cont_stack.push(State::Eval(fun, env, args));
             },
-            Block::Lam(bod) => {
+            Term::Lam(bod) => {
               if args.len() == 0 {
                 ret_stack.push(alloc!(Value::Lam(bod, env.clone())));
               }
@@ -127,23 +127,23 @@ pub fn eval(store: &Store, term: TermPtr, env: Env, args: Args) -> *const Value 
                 force(&mut cont_stack, thunk);
               }
             },
-            Block::Var(idx) => {
+            Term::Var(idx) => {
               cont_stack.push(State::Apply(args));
               let dep = env.len() - 1 - idx;
               let value = env[dep];
               ret_stack.push(value);
             },
-            Block::Opr(opr) => {
+            Term::Opr(opr) => {
               reduce_opr(&mut cont_stack, &mut ret_stack, opr, args)
             },
-            Block::Int(int) => {
+            Term::Int(int) => {
               ret_stack.push(alloc!(Value::Papp(Neutral::Int(int), args)));
             },
-            Block::Ref(idx) => {
+            Term::Ref(idx) => {
               env.clear();
               cont_stack.push(State::Eval(idx, env, args))
             },
-            Block::Impossible => unreachable!(),
+            Term::Impossible => unreachable!(),
           }
         },
         State::Apply(mut args) => {

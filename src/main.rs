@@ -2,46 +2,39 @@ use im::Vector;
 
 // use evaluator::lazy;
 use evaluator::semi_strict;
-use evaluator::block::*;
+use evaluator::term::*;
 
 fn main() {
   let mut store = vec![];
   // Macro to help building terms manually
   macro_rules! var {
     ($idx:expr) => {
-      pvar(&mut store, $idx)
+      pvar($idx, &mut store)
     };
   }
   macro_rules! lam {
     ($bod:expr) => {
-      {
-        let tmp = $bod;
-        plam(&mut store, tmp)
-      }
+      plam($bod, &mut store)
     };
   }
   macro_rules! app {
     ($fun:expr, $arg:expr) => {
-      {
-        let tmp0 = $fun;
-        let tmp1 = $arg;
-        papp(&mut store, tmp0, tmp1)
-      }
+      papp($fun, $arg, &mut store)
     };
   }
   macro_rules! refr {
     ($idx:expr) => {
-      pref(&mut store, $idx)
+      pref($idx, &mut store)
     };
   }
   macro_rules! opr {
     ($opr:expr) => {
-      popr(&mut store, $opr)
+      popr($opr, &mut store)
     };
   }
   macro_rules! int {
     ($num:expr) => {
-      pint(&mut store, $num)
+      pint($num, &mut store)
     };
   }
 
@@ -52,14 +45,14 @@ fn main() {
   let repeat_t = lam!(lam!(app!(app!(app!(opr!(Opr::Eqz), var!(1)), refr!(nil_t)), app!(app!(refr!(cons_t), var!(0)), app!(app!(pimpossible(&mut store), app!(app!(opr!(Opr::Sub), var!(1)), int!(1))), var!(0))))));
   for i in 0..store.len() {
     match store[i] {
-      Block::Impossible => (),
+      Term::Impossible => (),
       _ => continue,
     };
-    store[i] = Block::Ref(repeat_t)
+    store[i] = Term::Ref(repeat_t)
   }
 
   let sum_t = lam!(app!(app!(var!(0), int!(0)), lam!(lam!(app!(app!(opr!(Opr::Add), var!(1)), var!(0))))));
-  let val_t = int!(500000);
+  let val_t = int!(50000);
   let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
