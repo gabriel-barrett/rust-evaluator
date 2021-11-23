@@ -17,42 +17,52 @@ pub enum Opr {
   Eqz,
 }
 
+#[inline(always)]
+pub fn opr_arity(opr: Opr) -> usize {
+  match opr {
+    Opr::Add => 2,
+    Opr::Mul => 2,
+    Opr::Sub => 2,
+    Opr::Eqz => 3,
+  }
+}
+
 pub type TermPtr = usize;
 pub type EnvPtr = usize;
 pub type Store = Vec<Term>;
 
 #[inline(always)]
-pub fn pvar(idx: EnvPtr, store: &mut Store) -> TermPtr {
+pub fn tvar(idx: EnvPtr, store: &mut Store) -> TermPtr {
   store.push(Term::Var(idx));
   store.len()-1
 }
 #[inline(always)]
-pub fn plam(bod: TermPtr, store: &mut Store) -> TermPtr {
+pub fn tlam(bod: TermPtr, store: &mut Store) -> TermPtr {
   store.push(Term::Lam(bod));
   store.len()-1
 }
 #[inline(always)]
-pub fn papp(fun: TermPtr, arg: TermPtr, store: &mut Store) -> TermPtr {
+pub fn tapp(fun: TermPtr, arg: TermPtr, store: &mut Store) -> TermPtr {
   store.push(Term::App(fun, arg));
   store.len()-1
 }
 #[inline(always)]
-pub fn pref(idx: TermPtr, store: &mut Store) -> TermPtr {
+pub fn tref(idx: TermPtr, store: &mut Store) -> TermPtr {
   store.push(Term::Ref(idx));
   store.len()-1
 }
 #[inline(always)]
-pub fn popr(opr: Opr, store: &mut Store) -> TermPtr {
+pub fn topr(opr: Opr, store: &mut Store) -> TermPtr {
   store.push(Term::Opr(opr));
   store.len()-1
 }
 #[inline(always)]
-pub fn pint(num: i64, store: &mut Store) -> TermPtr {
+pub fn tint(num: i64, store: &mut Store) -> TermPtr {
   store.push(Term::Int(num));
   store.len()-1
 }
 #[inline(always)]
-pub fn pimpossible(store: &mut Store) -> TermPtr {
+pub fn timp(store: &mut Store) -> TermPtr {
   store.push(Term::Impossible);
   store.len()-1
 }
