@@ -210,15 +210,13 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
         match &heap[val1] {
           Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
             args.pop();
-            let case1 = args.pop().unwrap();
-            let case2 = args.pop().unwrap();
+            let (case1, env1) = args.pop().unwrap();
+            let (case2, env2) = args.pop().unwrap();
             if *num == 0 {
-              cont_stack.push(State::Apply(args));
-              force(&mut cont_stack, case1);
+              cont_stack.push(State::Eval(case1, env1, args));
             }
             else {
-              cont_stack.push(State::Apply(args));
-              force(&mut cont_stack, case2);
+              cont_stack.push(State::Eval(case2, env2, args));
             }
           },
           _ => ret_stack.push(papp(Neutral::Opr(Opr::Eqz), args, heap)),

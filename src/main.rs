@@ -54,7 +54,7 @@ fn main() {
   }
 
   let sum_t = lam!(app!(app!(var!(0), int!(0)), lam!(lam!(app!(app!(opr!(Opr::Add), var!(1)), var!(0))))));
-  let val_t = int!(50000);
+  let val_t = int!(500000);
   let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
