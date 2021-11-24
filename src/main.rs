@@ -1,5 +1,3 @@
-use im::Vector;
-
 use evaluator::semi_strict::{
   eval,
   print_int,
@@ -77,8 +75,6 @@ fn main() {
   let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
-  let env = Vector::new();
-  let args = vec![];
   let mut heap = vec![];
-  print_int(eval(&store, &mut heap, main_t, env, args), &mut heap);
+  print_int(eval(&store, &mut heap, main_t), &mut heap);
 }
