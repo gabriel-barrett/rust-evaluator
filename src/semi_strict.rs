@@ -180,12 +180,3 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args)
     }
   }
 }
-
-pub fn print_int(val: ValuePtr, heap: &mut Heap) {
-  match &heap[val] {
-    Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
-      println!("int {}", num)
-    },
-    _ => println!("other"),
-  }
-}

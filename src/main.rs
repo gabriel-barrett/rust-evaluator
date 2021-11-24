@@ -1,10 +1,16 @@
 use im::Vector;
 
-use evaluator::semi_strict::{
-  eval,
-  print_int,
-};
+use evaluator::strict::*;
 use evaluator::term::*;
+
+pub fn print_int(val: ValuePtr, heap: &mut Heap) {
+  match &heap[val] {
+    Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
+      println!("int {}", num)
+    },
+    _ => println!("other"),
+  }
+}
 
 fn main() {
   let mut store = vec![];
@@ -73,7 +79,7 @@ fn main() {
 
   // \xs -> xs 0 (\x rec -> add x rec)
   let sum_t = lam!(app!(app!(var!(0), int!(0)), lam!(lam!(app!(app!(refr!(add), var!(1)), var!(0))))));
-  let val_t = int!(500000);
+  let val_t = int!(200);
   let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
