@@ -1,7 +1,4 @@
-use evaluator::semi_strict::{
-  eval,
-  print_int,
-};
+use evaluator::semi_strict::eval;
 use evaluator::term::*;
 
 fn main() {
@@ -76,5 +73,6 @@ fn main() {
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
   let mut heap = vec![];
-  print_int(eval(&store, &mut heap, main_t), &mut heap);
+  let val = eval(&store, &mut heap, main_t);
+  print!("{:?}", heap[val]);
 }
