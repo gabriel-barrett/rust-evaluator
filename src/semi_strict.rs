@@ -1,4 +1,5 @@
 use std::{
+  mem,
   vec::Vec,
   boxed::Box,
 };
@@ -64,7 +65,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
           Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
             $node = exp;
-            $env = exp_env.clone(); 
+            $env = exp_env;
             $env.push_back(papp($neu, $args, $heap));
             break
           },
@@ -84,16 +85,18 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
         node = fun;
       },
       Term::Lam(bod) => {
-        match stack.pop() {
-          Some(State { kind: Kind::Arg, term: exp, env: exp_env }) => {
-            stack.push(State { kind: Kind::Ext, term: bod, env: env.clone() });
-            node = exp;
-            env = exp_env.clone();
+        match stack.last_mut() {
+          Some(State { kind: kind @ Kind::Arg, term: exp, env: exp_env }) => {
+            node = *exp;
+            mem::swap(&mut env, exp_env);
+            *exp = bod;
+            *kind = Kind::Ext;
           },
-          Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
+          Some(State { kind: Kind::Ext, .. }) => {
+            let State { term: exp, env: exp_env, .. } = stack.pop().unwrap();
             let value = vlam(bod, env.clone(), heap);
             node = exp;
-            env = exp_env.clone();
+            env = exp_env;
             env.push_back(value);
           },
           None => {
@@ -103,25 +106,28 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       },
       Term::Var(idx) => {
         let value = env[env.len() - 1 - idx];
-        match stack.pop() {
-          Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
-            node = exp;
-            env = exp_env.clone();
-            env.push_back(value);
-          },
-          Some(State { kind: Kind::Arg, term: exp, env: exp_env }) => {
+        match stack.last_mut() {
+          Some(State { kind: kind @ Kind::Arg, term: exp, env: exp_env }) => {
             match &heap[value] {
               Value::VLam(bod, lam_env) => {
-                stack.push(State { kind: Kind::Ext, term: *bod, env: lam_env.clone() });
-                node = exp;
-                env = exp_env.clone();
+                node = *exp;
+                *kind = Kind::Ext;
+                *exp = *bod;
+                mem::swap(exp_env, &mut env);
+                *exp_env = lam_env.clone();
               },
               Value::Papp(neu, p_args) => {
                 let mut args = p_args.clone();
-                args.push((exp, exp_env));
                 apply!(heap, stack, node, env, neu.clone(), args);
+                stack.pop();
               },
             }
+          },
+          Some(State { kind: Kind::Ext, .. }) => {
+            let State { term: exp, env: exp_env, .. } = stack.pop().unwrap();
+            node = exp;
+            env = exp_env;
+            env.push_back(value);
           },
           None => {
             return value;
