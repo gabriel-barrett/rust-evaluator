@@ -66,7 +66,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       papp(Neutral::Int(int), args, heap)
     },
     Term::Ref(idx) => {
-      eval(store, heap, idx, env, args)
+      eval(store, heap, idx, Vector::new(), args)
     },
     Term::Add(idx1, idx2) => {
       let val1 = env[idx1];
