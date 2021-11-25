@@ -74,5 +74,5 @@ fn main() {
 
   let mut heap = vec![];
   let val = eval(&store, &mut heap, main_t);
-  print!("{:?}", heap[val]);
+  println!("{:?}", heap[val]);
 }

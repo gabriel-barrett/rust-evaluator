@@ -40,9 +40,17 @@ pub enum Neutral {
 pub type Heap = Vec<Value>;
 pub type ValuePtr = usize;
 
-pub enum State {
-  Ext(TermPtr, Env),
-  Arg(TermPtr, Env),
+#[derive(Debug, Clone, Copy)]
+pub enum Kind {
+  Ext,
+  Arg,
+}
+
+#[derive(Debug, Clone)]
+pub struct State {
+  kind: Kind,
+  term: TermPtr,
+  env: Env,
 }
 
 #[inline]
@@ -51,10 +59,10 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
     ($heap:ident, $stack:ident, $node:ident, $env:ident, $neu:expr, $args:ident) => {
       loop {
         match $stack.pop() {
-          Some(State::Arg(exp, exp_env)) => {
+          Some(State { kind: Kind::Arg, term: exp, env: exp_env }) => {
             $args.push((exp, exp_env));
           },
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
             $node = exp;
             $env = exp_env.clone(); 
             $env.push_back(papp($neu, $args, $heap));
@@ -72,17 +80,17 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   loop {
     match store[node] {
       Term::App(fun, arg) => {
-        stack.push(State::Arg(arg, env.clone()));
+        stack.push(State { kind: Kind::Arg, term: arg, env: env.clone() });
         node = fun;
       },
       Term::Lam(bod) => {
         match stack.pop() {
-          Some(State::Arg(exp, exp_env)) => {
-            stack.push(State::Ext(bod, env.clone()));
+          Some(State { kind: Kind::Arg, term: exp, env: exp_env }) => {
+            stack.push(State { kind: Kind::Ext, term: bod, env: env.clone() });
             node = exp;
             env = exp_env.clone();
           },
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
             let value = vlam(bod, env.clone(), heap);
             node = exp;
             env = exp_env.clone();
@@ -96,15 +104,15 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       Term::Var(idx) => {
         let value = env[env.len() - 1 - idx];
         match stack.pop() {
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State { kind: Kind::Ext, term: exp, env: exp_env }) => {
             node = exp;
             env = exp_env.clone();
             env.push_back(value);
           },
-          Some(State::Arg(exp, exp_env)) => {
+          Some(State { kind: Kind::Arg, term: exp, env: exp_env }) => {
             match &heap[value] {
               Value::VLam(bod, lam_env) => {
-                stack.push(State::Ext(*bod, lam_env.clone()));
+                stack.push(State { kind: Kind::Ext, term: *bod, env: lam_env.clone() });
                 node = exp;
                 env = exp_env.clone();
               },
