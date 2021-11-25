@@ -1,5 +1,4 @@
 use std::{
-  mem,
   vec::Vec,
   boxed::Box,
 };
@@ -41,27 +40,27 @@ pub enum Neutral {
 pub type Heap = Vec<Value>;
 pub type ValuePtr = usize;
 
-pub type State = (bool, TermPtr, Env);
+pub enum State {
+  Ext(TermPtr, Env),
+  Arg(TermPtr, Env),
+}
 
 #[inline]
 pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   macro_rules! apply {
-    ($heap:ident, $stack:ident, $node:ident, $env:ident, $neu:expr, $args:expr) => {
-      let mut args = $args;
+    ($heap:ident, $stack:ident, $node:ident, $env:ident, $neu:expr, $args:ident) => {
       loop {
         match $stack.pop() {
-          Some((is_arg, exp, mut exp_env)) => {
-            if is_arg {
-              args.push((exp, exp_env));
-            }
-            else {
-              $node = exp;
-              mem::swap(&mut exp_env, &mut $env);
-              $env.push_back(papp($neu, args, $heap));
-              break
-            }
+          Some(State::Arg(exp, exp_env)) => {
+            $args.push((exp, exp_env));
           },
-          None => return papp($neu, args, $heap),
+          Some(State::Ext(exp, exp_env)) => {
+            $node = exp;
+            $env = exp_env.clone(); 
+            $env.push_back(papp($neu, $args, $heap));
+            break
+          },
+          None => return papp($neu, $args, $heap),
         }
       }
     }
@@ -73,25 +72,21 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   loop {
     match store[node] {
       Term::App(fun, arg) => {
-        stack.push((true, arg, env.clone()));
+        stack.push(State::Arg(arg, env.clone()));
         node = fun;
       },
       Term::Lam(bod) => {
-        match stack.last_mut() {
-          Some((is_arg, exp, exp_env)) => {
-            if *is_arg {
-              node = *exp;
-              *is_arg = false;
-              *exp = bod;
-              mem::swap(exp_env, &mut env);
-            }
-            else {
-              node = *exp;
-              let value = vlam(bod, env.clone(), heap);
-              mem::swap(exp_env, &mut env);
-              env.push_back(value);
-              stack.pop();
-            }
+        match stack.pop() {
+          Some(State::Arg(exp, exp_env)) => {
+            stack.push(State::Ext(bod, env.clone()));
+            node = exp;
+            env = exp_env.clone();
+          },
+          Some(State::Ext(exp, exp_env)) => {
+            let value = vlam(bod, env.clone(), heap);
+            node = exp;
+            env = exp_env.clone();
+            env.push_back(value);
           },
           None => {
             return vlam(bod, env, heap);
@@ -100,27 +95,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       },
       Term::Var(idx) => {
         let value = env[env.len() - 1 - idx];
-        match stack.last_mut() {
-          Some((is_arg, exp, exp_env)) => {
-            if *is_arg {
-              match &heap[value] {
-                Value::Papp(neu, p_args) => {
-                  apply!(heap, stack, node, env, neu.clone(), p_args.clone());
-                },
-                Value::VLam(bod, lam_env) => {
-                  node = *exp;
-                  *is_arg = false;
-                  *exp = *bod;
-                  mem::swap(exp_env, &mut env);
-                  *exp_env = lam_env.clone();
-                },
-              }
-            }
-            else {
-              node = *exp;
-              mem::swap(exp_env, &mut env);
-              env.push_back(value);
-              stack.pop();
+        match stack.pop() {
+          Some(State::Ext(exp, exp_env)) => {
+            node = exp;
+            env = exp_env.clone();
+            env.push_back(value);
+          },
+          Some(State::Arg(exp, exp_env)) => {
+            match &heap[value] {
+              Value::VLam(bod, lam_env) => {
+                stack.push(State::Ext(*bod, lam_env.clone()));
+                node = exp;
+                env = exp_env.clone();
+              },
+              Value::Papp(neu, p_args) => {
+                let mut args = p_args.clone();
+                args.push((exp, exp_env));
+                apply!(heap, stack, node, env, neu.clone(), args);
+              },
             }
           },
           None => {
@@ -133,7 +125,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       },
       Term::Int(num) => {
         let neu = Neutral::Int(num);
-        apply!(heap, stack, node, env, neu, vec![]);
+        let mut args = vec![];
+        apply!(heap, stack, node, env, neu, args);
       },
       Term::Add(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -144,7 +137,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1+num2),
           _ => Neutral::Add(Box::new((idx1, idx2))),
         };
-        apply!(heap, stack, node, env, neu, vec![]);
+        let mut args = vec![];
+        apply!(heap, stack, node, env, neu, args);
       },
       Term::Mul(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -155,7 +149,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1*num2),
           _ => Neutral::Mul(Box::new((idx1, idx2))),
         };
-        apply!(heap, stack, node, env, neu, vec![]);
+        let mut args = vec![];
+        apply!(heap, stack, node, env, neu, args);
       },
       Term::Sub(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -166,7 +161,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1-num2),
           _ => Neutral::Sub(Box::new((idx1, idx2))),
         };
-        apply!(heap, stack, node, env, neu, vec![]);
+        let mut args = vec![];
+        apply!(heap, stack, node, env, neu, args);
       },
       Term::Eqz(idx, case1, case2) => {
         let val = env[env.len() - 1 - idx];
@@ -181,7 +177,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
           _ => {
             let neu = Neutral::Eqz(Box::new((idx, env.clone(), case1, case2)));
-            apply!(heap, stack, node, env, neu, vec![]);
+            let mut args = vec![];
+            apply!(heap, stack, node, env, neu, args);
           },
         }
       },

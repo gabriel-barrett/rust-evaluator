@@ -40,7 +40,7 @@ pub type Heap = Vec<Value>;
 pub type ValuePtr = usize;
 
 pub enum State {
-  Ext(TermPtr, Env),
+  Ret(TermPtr, Env),
   Arg(ValuePtr),
 }
 
@@ -53,7 +53,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           Some(State::Arg(arg)) => {
             $args.push(arg);
           },
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State::Ret(exp, exp_env)) => {
             $node = exp;
             $env = exp_env.clone();
             $stack.push(State::Arg(papp($neu, $args, $heap)));
@@ -71,7 +71,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   loop {
     match store[node] {
       Term::App(fun, arg) => {
-        stack.push(State::Ext(fun, env.clone()));
+        stack.push(State::Ret(fun, env.clone()));
         node = arg;
       },
       Term::Lam(bod) => {
@@ -80,7 +80,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             node = bod;
             env.push_back(arg);
           },
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State::Ret(exp, exp_env)) => {
             let value = vlam(bod, env.clone(), heap);
             node = exp;
             env = exp_env.clone();
@@ -108,7 +108,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
               }
             }
           },
-          Some(State::Ext(exp, exp_env)) => {
+          Some(State::Ret(exp, exp_env)) => {
             node = exp;
             env = exp_env.clone();
             stack.push(State::Arg(value))
