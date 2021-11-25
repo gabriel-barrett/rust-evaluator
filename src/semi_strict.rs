@@ -35,7 +35,7 @@ pub enum Neutral {
   Add(Box<(ValuePtr, ValuePtr)>),
   Mul(Box<(ValuePtr, ValuePtr)>),
   Sub(Box<(ValuePtr, ValuePtr)>),
-  Eqz(Box<(ValuePtr, Thunk, Thunk)>),
+  Eqz(Box<(ValuePtr, Env, TermPtr, TermPtr)>),
 }
 
 pub type Heap = Vec<Value>;
@@ -45,6 +45,28 @@ pub type State = (bool, TermPtr, Env);
 
 #[inline]
 pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
+  macro_rules! apply {
+    ($heap:ident, $stack:ident, $node:ident, $env:ident, $neu:expr, $args:expr) => {
+      let mut args = $args;
+      loop {
+        match $stack.pop() {
+          Some((is_arg, exp, mut exp_env)) => {
+            if is_arg {
+              args.push((exp, exp_env));
+            }
+            else {
+              $node = exp;
+              mem::swap(&mut exp_env, &mut $env);
+              $env.push_back(papp($neu, args, $heap));
+              break
+            }
+          },
+          None => return papp($neu, args, $heap),
+        }
+      }
+    }
+  }
+
   let mut node = term;
   let mut env: Env = Vector::new();
   let mut stack = vec![];
@@ -83,23 +105,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if *is_arg {
               match &heap[value] {
                 Value::Papp(neu, p_args) => {
-                  let mut args = p_args.clone();
-                  loop {
-                    match stack.pop() {
-                      Some((is_arg, exp, mut exp_env)) => {
-                        if is_arg {
-                          args.push((exp, exp_env));
-                        }
-                        else {
-                          node = exp;
-                          mem::swap(&mut exp_env, &mut env);
-                          env.push_back(papp(neu.clone(), args, heap));
-                          break
-                        }
-                      },
-                      None => return papp(neu.clone(), args, heap),
-                    }
-                  }
+                  apply!(heap, stack, node, env, neu.clone(), p_args.clone());
                 },
                 Value::VLam(bod, lam_env) => {
                   node = *exp;
@@ -127,23 +133,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       },
       Term::Int(num) => {
         let neu = Neutral::Int(num);
-        let mut args = vec![];
-        loop {
-          match stack.pop() {
-            Some((is_arg, exp, mut exp_env)) => {
-              if is_arg {
-                args.push((exp, exp_env));
-              }
-              else {
-                node = exp;
-                mem::swap(&mut exp_env, &mut env);
-                env.push_back(papp(neu, args, heap));
-                break
-              }
-            },
-            None => return papp(neu, args, heap),
-          }
-        }
+        apply!(heap, stack, node, env, neu, vec![]);
       },
       Term::Add(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -154,23 +144,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1+num2),
           _ => Neutral::Add(Box::new((idx1, idx2))),
         };
-        let mut args = vec![];
-        loop {
-          match stack.pop() {
-            Some((is_arg, exp, mut exp_env)) => {
-              if is_arg {
-                args.push((exp, exp_env));
-              }
-              else {
-                node = exp;
-                mem::swap(&mut exp_env, &mut env);
-                env.push_back(papp(neu, args, heap));
-                break
-              }
-            },
-            None => return papp(neu, args, heap),
-          }
-        }
+        apply!(heap, stack, node, env, neu, vec![]);
       },
       Term::Mul(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -181,23 +155,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1*num2),
           _ => Neutral::Mul(Box::new((idx1, idx2))),
         };
-        let mut args = vec![];
-        loop {
-          match stack.pop() {
-            Some((is_arg, exp, mut exp_env)) => {
-              if is_arg {
-                args.push((exp, exp_env));
-              }
-              else {
-                node = exp;
-                mem::swap(&mut exp_env, &mut env);
-                env.push_back(papp(neu, args, heap));
-                break
-              }
-            },
-            None => return papp(neu, args, heap),
-          }
-        }
+        apply!(heap, stack, node, env, neu, vec![]);
       },
       Term::Sub(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1];
@@ -208,23 +166,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             if p_args1.is_empty() && p_args2.is_empty() => Neutral::Int(num1-num2),
           _ => Neutral::Sub(Box::new((idx1, idx2))),
         };
-        let mut args = vec![];
-        loop {
-          match stack.pop() {
-            Some((is_arg, exp, mut exp_env)) => {
-              if is_arg {
-                args.push((exp, exp_env));
-              }
-              else {
-                node = exp;
-                mem::swap(&mut exp_env, &mut env);
-                env.push_back(papp(neu, args, heap));
-                break
-              }
-            },
-            None => return papp(neu, args, heap),
-          }
-        }
+        apply!(heap, stack, node, env, neu, vec![]);
       },
       Term::Eqz(idx, case1, case2) => {
         let val = env[env.len() - 1 - idx];
@@ -238,26 +180,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             }
           },
           _ => {
-            let case1 = (case1, env.clone());
-            let case2 = (case2, env.clone());
-            let neu = Neutral::Eqz(Box::new((idx, case1, case2)));
-            let mut args = vec![];
-            loop {
-              match stack.pop() {
-                Some((is_arg, exp, mut exp_env)) => {
-                  if is_arg {
-                    args.push((exp, exp_env));
-                  }
-                  else {
-                    node = exp;
-                    mem::swap(&mut exp_env, &mut env);
-                    env.push_back(papp(neu, args, heap));
-                    break
-                  }
-                },
-                None => return papp(neu, args, heap),
-              }
-            }
+            let neu = Neutral::Eqz(Box::new((idx, env.clone(), case1, case2)));
+            apply!(heap, stack, node, env, neu, vec![]);
           },
         }
       },
