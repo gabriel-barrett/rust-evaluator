@@ -94,7 +94,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
           Some(State { kind: Kind::Ext, .. }) => {
             let State { term: exp, env: exp_env, .. } = stack.pop().unwrap();
-            let value = vlam(bod, env.clone(), heap);
+            let value = vlam(bod, env, heap);
             node = exp;
             env = exp_env;
             env.push_back(value);
@@ -190,7 +190,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             }
           },
           _ => {
-            let neu = Neutral::Eqz(Box::new((idx, env.clone(), case1, case2)));
+            let neu = Neutral::Eqz(Box::new((idx, env, case1, case2)));
             let mut args = vec![];
             apply!(heap, stack, node, env, neu, args);
           },

@@ -55,7 +55,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
           Some(State::Ret(exp, exp_env)) => {
             $node = exp;
-            $env = exp_env.clone();
+            $env = exp_env;
             $stack.push(State::Arg(papp($neu, $args, $heap)));
             break
           },
@@ -83,7 +83,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           Some(State::Ret(exp, exp_env)) => {
             let value = vlam(bod, env.clone(), heap);
             node = exp;
-            env = exp_env.clone();
+            env = exp_env;
             stack.push(State::Arg(value))
           },
           None => {
@@ -110,7 +110,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
           Some(State::Ret(exp, exp_env)) => {
             node = exp;
-            env = exp_env.clone();
+            env = exp_env;
             stack.push(State::Arg(value))
           },
           None => {
@@ -174,7 +174,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
             }
           },
           _ => {
-            let neu = Neutral::Eqz(Box::new((idx, env.clone(), case1, case2)));
+            let neu = Neutral::Eqz(Box::new((idx, env, case1, case2)));
             let mut args = vec![];
             apply!(heap, stack, node, env, neu, args);
           },
