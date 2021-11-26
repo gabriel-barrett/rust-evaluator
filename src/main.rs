@@ -1,4 +1,4 @@
-use evaluator::semi_strict::eval;
+use evaluator::semi_strict::*;
 use evaluator::term::*;
 
 fn main() {
@@ -74,5 +74,5 @@ fn main() {
 
   let mut heap = vec![];
   let val = eval(&store, &mut heap, main_t);
-  println!("{:?}", heap[val]);
+  println!("{:?}", heap[val as usize]);
 }
