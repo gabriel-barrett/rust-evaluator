@@ -1,4 +1,5 @@
 use std::{
+  mem::ManuallyDrop,
   vec::Vec,
   boxed::Box,
 };
@@ -39,10 +40,23 @@ pub enum Neutral {
 pub type Heap = Vec<Value>;
 pub type ValuePtr = u32;
 
-pub enum State {
-  Ret(TermPtr, Env),
-  Arg(ValuePtr),
+pub struct State {
+  kind: Kind,
+  inner: InnerState,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum Kind {
+  Ret,
+  Arg,
+}
+
+#[repr(C)]
+pub union InnerState {
+    ret: ManuallyDrop<(TermPtr, Env)>,
+    arg: ValuePtr,
+}
+
 
 #[inline]
 pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
@@ -50,13 +64,15 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
     ($heap:ident, $stack:ident, $node:ident, $env:ident, $neu:expr, $args:ident) => {
       loop {
         match $stack.pop() {
-          Some(State::Arg(arg)) => {
-            $args.push(arg);
+          Some(State { kind: Kind::Arg, inner }) => {
+            unsafe { $args.push(inner.arg); }
           },
-          Some(State::Ret(exp, exp_env)) => {
+          Some(State { kind: Kind::Ret, inner }) => {
+            let (exp, exp_env) = unsafe { ManuallyDrop::into_inner(inner.ret) };
             $node = exp;
             $env = exp_env;
-            $stack.push(State::Arg(papp($neu, $args, $heap)));
+            let inner = InnerState{ arg: papp($neu, $args, $heap) };
+            $stack.push(State { kind: Kind::Arg, inner });
             break
           },
           None => return papp($neu, $args, $heap),
@@ -71,20 +87,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   loop {
     match store[node as usize] {
       Term::App(fun, arg) => {
-        stack.push(State::Ret(fun, env.clone()));
+        let inner = InnerState{ ret: ManuallyDrop::new((fun, env.clone())) };
+        stack.push(State { kind: Kind::Ret, inner });
         node = arg;
       },
       Term::Lam(bod) => {
-        match stack.pop() {
-          Some(State::Arg(arg)) => {
+        match stack.last_mut() {
+          Some(State { kind: Kind::Arg, inner }) => {
             node = bod;
-            env.push_back(arg);
+            unsafe { env.push_back(inner.arg) };
+            stack.pop();
           },
-          Some(State::Ret(exp, exp_env)) => {
+          Some(State { kind: kind @ Kind::Ret, inner }) => {
             let value = vlam(bod, env.clone(), heap);
+            let (exp, exp_env) = unsafe { ManuallyDrop::take(&mut inner.ret) };
+            inner.arg = value;
+            *kind = Kind::Arg;
             node = exp;
             env = exp_env;
-            stack.push(State::Arg(value))
           },
           None => {
             return vlam(bod, env, heap);
@@ -93,25 +113,28 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
       },
       Term::Var(idx) => {
         let value = env[env.len() - 1 - idx as usize];
-        match stack.pop() {
-          Some(State::Arg(arg)) => {
+        match stack.last_mut() {
+          Some(State { kind: Kind::Arg, inner }) => {
+            let arg = unsafe { inner.arg };
             match &heap[value as usize] {
               Value::Papp(neu, p_args) => {
                 let mut args = p_args.clone();
-                args.push(arg);
                 apply!(heap, stack, node, env, neu.clone(), args);
               },
               Value::VLam(bod, lam_env) => {
                 node = *bod;
                 env = (&**lam_env).clone();
                 env.push_back(arg);
+                stack.pop();
               }
             }
           },
-          Some(State::Ret(exp, exp_env)) => {
+          Some(State { kind: kind @ Kind::Ret, inner }) => {
+            let (exp, exp_env) = unsafe { ManuallyDrop::take(&mut inner.ret) };
+            inner.arg = value;
+            *kind = Kind::Arg;
             node = exp;
             env = exp_env;
-            stack.push(State::Arg(value))
           },
           None => {
             return value;

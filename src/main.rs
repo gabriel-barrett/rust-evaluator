@@ -1,4 +1,4 @@
-use evaluator::semi_strict::*;
+use evaluator::strict::*;
 use evaluator::term::*;
 
 fn main() {
