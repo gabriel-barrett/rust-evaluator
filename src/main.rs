@@ -79,12 +79,13 @@ fn main() {
 
   // \xs -> xs 0 (\x rec -> add x rec)
   let sum_t = lam!(app!(app!(var!(0), int!(0)), lam!(lam!(app!(app!(refr!(add), var!(1)), var!(0))))));
-  let val_t = int!(200);
+  let val_t = int!(625);
   let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
   let main_t = app!(refr!(sum_t), refr!(list_t));
 
   let env = Vector::new();
   let args = vec![];
   let mut heap = vec![];
-  print_int(eval(&store, &mut heap, main_t, env, args), &mut heap);
+  let cont = Continuation::RETURN;
+  print_int(eval(&store, &mut heap, main_t, env, args, cont), &mut heap);
 }
