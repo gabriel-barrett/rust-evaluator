@@ -2,6 +2,7 @@ use std::{
   vec::Vec,
   boxed::Box,
 };
+use tailcall::tailcall;
 use im::Vector;
 use crate::term::*;
 
@@ -40,33 +41,98 @@ pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
 pub type Heap = Vec<Value>;
 pub type ValuePtr = usize;
 
-pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut args: Args) -> ValuePtr {
+pub type Continuation = Option<Box<Node>>;
+
+pub struct Node {
+  term: TermPtr,
+  env: Env,
+  args: Args,
+  cont: Continuation,
+}
+
+#[tailcall]
+pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, mut args: Args, mut cont: Continuation) -> ValuePtr {
   match store[term] {
     Term::App(fun, arg) => {
       args.push((arg, env.clone()));
-      eval(store, heap, fun, env, args)
+      eval(store, heap, fun, env, args, cont)
     },
     Term::Lam(bod) => {
       match args.pop() {
         Some((exp, exp_env)) => {
-          let arg = eval(store, heap, exp, exp_env, vec![]);
-          env.push_front(arg);
-          eval (store, heap, bod, env, args)
+          cont = Some(
+            Box::new(Node {
+              term: bod,
+              env: env,
+              args,
+              cont,
+            })
+          );
+          eval(store, heap, exp, exp_env, vec![], cont)
         },
         None => {
-          vlam(bod, env, heap)
+          let val = vlam(bod, env, heap);
+          match cont {
+            None => val,
+            Some(mut ctx) => {
+              ctx.env.push_front(val);
+              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+            },
+          }
         },
       }
     },
     Term::Var(idx) => {
       let val = env[idx];
-      apply(store, heap, val, args)
+      if args.is_empty() {
+        match cont {
+          None => val,
+          Some(mut ctx) => {
+            ctx.env.push_front(val);
+            eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+          },
+        }
+      }
+      else {
+        match &heap[val] {
+          Value::Papp(neu, p_args) => {
+            args.extend_from_slice(p_args);
+            let val = papp(neu.clone(), args, heap);
+            match cont {
+              None => val,
+              Some(mut ctx) => {
+                ctx.env.push_front(val);
+                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+              },
+            }
+          }
+          Value::VLam(bod, env) => {
+            let (exp, exp_env) = args.pop().unwrap();
+            cont = Some(
+              Box::new(Node {
+                term: *bod,
+                env: env.clone(),
+                args,
+                cont,
+              })
+            );
+            eval(store, heap, exp, exp_env, vec![], cont)
+          },
+        }
+      }
     },
     Term::Int(int) => {
-      papp(Neutral::Int(int), args, heap)
+      let val = papp(Neutral::Int(int), args, heap);
+      match cont {
+        None => val,
+        Some(mut ctx) => {
+          ctx.env.push_front(val);
+          eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+        },
+      }
     },
     Term::Ref(idx) => {
-      eval(store, heap, idx, env, args)
+      eval(store, heap, idx, env, args, cont)
     },
     Term::Add(idx1, idx2) => {
       let val1 = env[idx1];
@@ -75,10 +141,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
         (Value::Papp(Neutral::Int(a), args_a),
          Value::Papp(Neutral::Int(b), args_b))
           if args_a.is_empty() && args_b.is_empty() => {
-            papp(Neutral::Int(a+b), args, heap)
+            let val = papp(Neutral::Int(a+b), args, heap);
+            match cont {
+              None => val,
+              Some(mut ctx) => {
+                ctx.env.push_front(val);
+                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+              },
+            }
           }
         _ => {
-          papp(Neutral::Add(Box::new((val1, val2))), args, heap)
+          let val = papp(Neutral::Add(Box::new((val1, val2))), args, heap);
+          match cont {
+            None => val,
+            Some(mut ctx) => {
+              ctx.env.push_front(val);
+              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+            },
+          }
         },
       }
     },
@@ -89,10 +169,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
         (Value::Papp(Neutral::Int(a), args_a),
          Value::Papp(Neutral::Int(b), args_b))
           if args_a.is_empty() && args_b.is_empty() => {
-            papp(Neutral::Int(a-b), args, heap)
+            let val = papp(Neutral::Int(a-b), args, heap);
+            match cont {
+              None => val,
+              Some(mut ctx) => {
+                ctx.env.push_front(val);
+                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+              },
+            }
           }
         _ => {
-          papp(Neutral::Sub(Box::new((val1, val2))), args, heap)
+          let val = papp(Neutral::Sub(Box::new((val1, val2))), args, heap);
+          match cont {
+            None => val,
+            Some(mut ctx) => {
+              ctx.env.push_front(val);
+              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+            },
+          }
         },
       }
     },
@@ -103,10 +197,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
         (Value::Papp(Neutral::Int(a), args_a),
          Value::Papp(Neutral::Int(b), args_b))
           if args_a.is_empty() && args_b.is_empty() => {
-            papp(Neutral::Int(a*b), args, heap)
+            let val = papp(Neutral::Int(a*b), args, heap);
+            match cont {
+              None => val,
+              Some(mut ctx) => {
+                ctx.env.push_front(val);
+                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+              },
+            }
           }
         _ => {
-          papp(Neutral::Mul(Box::new((val1, val2))), args, heap)
+          let val = papp(Neutral::Mul(Box::new((val1, val2))), args, heap);
+          match cont {
+            None => val,
+            Some(mut ctx) => {
+              ctx.env.push_front(val);
+              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+            },
+          }
         },
       }
     },
@@ -116,39 +224,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
         Value::Papp(Neutral::Int(a), args_a)
           if args_a.is_empty() => {
             if *a == 0 {
-              eval(store, heap, case1, env, args)
+              eval(store, heap, case1, env, args, cont)
             }
             else {
-              eval(store, heap, case2, env, args)
+              eval(store, heap, case2, env, args, cont)
             }
           }
         _ => {
-          papp(Neutral::Eqz(Box::new((idx, env, case1, case2))), args, heap)
+          let val = papp(Neutral::Eqz(Box::new((idx, env, case1, case2))), args, heap);
+          match cont {
+            None => val,
+            Some(mut ctx) => {
+              ctx.env.push_front(val);
+              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
+            },
+          }
         },
       }
     },
     Term::Impossible => unreachable!(),
-  }
-}
-
-pub fn apply(store: &Store, heap: &mut Heap, val: ValuePtr, mut args: Args) -> ValuePtr {
-  if args.is_empty() {
-    val
-  }
-  else {
-    match &heap[val] {
-      Value::Papp(neu, p_args) => {
-        args.extend_from_slice(p_args);
-        papp(neu.clone(), args, heap)
-      }
-      Value::VLam(bod, env) => {
-        let term = *bod;
-        let mut env = env.clone();
-        let (exp, exp_env) = args.pop().unwrap();
-        let arg = eval(store, heap, exp, exp_env, vec![]);
-        env.push_front(arg);
-        eval(store, heap, term, env, args)
-      },
-    }
   }
 }
