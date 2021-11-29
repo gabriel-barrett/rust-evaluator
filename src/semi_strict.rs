@@ -5,15 +5,25 @@ use std::{
 use im::Vector;
 use crate::term::*;
 
-pub type Thunk = (TermPtr, Env);
-pub type Env = Vector<ValuePtr>;
-pub type Args = Vec<Thunk>;
-
 #[derive(Debug, Clone)]
 pub enum Value {
   Papp(Neutral, Args),
   VLam(TermPtr, Env),
 }
+
+#[derive(Debug, Clone)]
+pub enum Neutral {
+  FVar(usize),
+  Int(i64),
+  Add(Box<(ValuePtr, ValuePtr)>),
+  Mul(Box<(ValuePtr, ValuePtr)>),
+  Sub(Box<(ValuePtr, ValuePtr)>),
+  Eqz(Box<(ValuePtr, Env, TermPtr, TermPtr)>),
+}
+
+pub type Thunk = (TermPtr, Env);
+pub type Env = Vector<ValuePtr>;
+pub type Args = Vec<Thunk>;
 
 #[inline(always)]
 pub fn papp(neu: Neutral, args: Args, heap: &mut Heap) -> ValuePtr {
@@ -27,156 +37,118 @@ pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
   heap.len()-1
 }
 
-#[derive(Debug, Clone)]
-pub enum Neutral {
-  FVar(usize),
-  Int(i64),
-  Add(Box<(ValuePtr, ValuePtr)>),
-  Mul(Box<(ValuePtr, ValuePtr)>),
-  Sub(Box<(ValuePtr, ValuePtr)>),
-  Eqz(Box<(ValuePtr, Thunk, Thunk)>),
-}
-
 pub type Heap = Vec<Value>;
 pub type ValuePtr = usize;
 
-pub enum State {
-  Eval(TermPtr, Env, Args),
-  EvalPlus(TermPtr, Env, Args),
-  Apply(Args),
-  RETURN,
-}
-
-#[inline(always)]
-pub fn force(cont_stack: &mut Vec<State>, thunk: Thunk) {
-  match thunk {
-    (sus_term, sus_env) => {
-      let term = sus_term;
-      let env = sus_env;
-      cont_stack.push(State::Eval(term, env, vec![]));
-    }
+pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut args: Args) -> ValuePtr {
+  match store[term] {
+    Term::App(fun, arg) => {
+      args.push((arg, env.clone()));
+      eval(store, heap, fun, env, args)
+    },
+    Term::Lam(bod) => {
+      match args.pop() {
+        Some((exp, exp_env)) => {
+          let arg = eval(store, heap, exp, exp_env, vec![]);
+          env.push_front(arg);
+          eval (store, heap, bod, env, args)
+        },
+        None => {
+          vlam(bod, env, heap)
+        },
+      }
+    },
+    Term::Var(idx) => {
+      let val = env[idx];
+      apply(store, heap, val, args)
+    },
+    Term::Int(int) => {
+      papp(Neutral::Int(int), args, heap)
+    },
+    Term::Ref(idx) => {
+      eval(store, heap, idx, env, args)
+    },
+    Term::Add(idx1, idx2) => {
+      let val1 = env[idx1];
+      let val2 = env[idx2];
+      match (&heap[val1], &heap[val2]) {
+        (Value::Papp(Neutral::Int(a), args_a),
+         Value::Papp(Neutral::Int(b), args_b))
+          if args_a.is_empty() && args_b.is_empty() => {
+            papp(Neutral::Int(a+b), args, heap)
+          }
+        _ => {
+          papp(Neutral::Add(Box::new((val1, val2))), args, heap)
+        },
+      }
+    },
+    Term::Sub(idx1, idx2) => {
+      let val1 = env[idx1];
+      let val2 = env[idx2];
+      match (&heap[val1], &heap[val2]) {
+        (Value::Papp(Neutral::Int(a), args_a),
+         Value::Papp(Neutral::Int(b), args_b))
+          if args_a.is_empty() && args_b.is_empty() => {
+            papp(Neutral::Int(a-b), args, heap)
+          }
+        _ => {
+          papp(Neutral::Sub(Box::new((val1, val2))), args, heap)
+        },
+      }
+    },
+    Term::Mul(idx1, idx2) => {
+      let val1 = env[idx1];
+      let val2 = env[idx2];
+      match (&heap[val1], &heap[val2]) {
+        (Value::Papp(Neutral::Int(a), args_a),
+         Value::Papp(Neutral::Int(b), args_b))
+          if args_a.is_empty() && args_b.is_empty() => {
+            papp(Neutral::Int(a*b), args, heap)
+          }
+        _ => {
+          papp(Neutral::Mul(Box::new((val1, val2))), args, heap)
+        },
+      }
+    },
+    Term::Eqz(idx, case1, case2) => {
+      let val = env[idx];
+      match &heap[val] {
+        Value::Papp(Neutral::Int(a), args_a)
+          if args_a.is_empty() => {
+            if *a == 0 {
+              eval(store, heap, case1, env, args)
+            }
+            else {
+              eval(store, heap, case2, env, args)
+            }
+          }
+        _ => {
+          papp(Neutral::Eqz(Box::new((idx, env, case1, case2))), args, heap)
+        },
+      }
+    },
+    Term::Impossible => unreachable!(),
   }
 }
 
-#[inline]
-pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args) -> ValuePtr {
-  let mut cont_stack = vec![State::RETURN, State::Eval(term, env, args)];
-  let mut ret_stack = vec![];
-  loop {
-    let state = cont_stack.pop().unwrap();
-    match state {
-      State::EvalPlus(term, mut env, args) => {
-        let value = ret_stack.pop().unwrap();
-        env.push_back(value);
-        cont_stack.push(State::Eval(term, env, args));
+pub fn apply(store: &Store, heap: &mut Heap, val: ValuePtr, mut args: Args) -> ValuePtr {
+  if args.is_empty() {
+    val
+  }
+  else {
+    match &heap[val] {
+      Value::Papp(neu, p_args) => {
+        args.extend_from_slice(p_args);
+        papp(neu.clone(), args, heap)
+      }
+      Value::VLam(bod, env) => {
+        let term = *bod;
+        let mut env = env.clone();
+        let (exp, exp_env) = args.pop().unwrap();
+        let arg = eval(store, heap, exp, exp_env, vec![]);
+        env.push_front(arg);
+        eval(store, heap, term, env, args)
       },
-      State::Eval(term, mut env, mut args) => {
-        match store[term] {
-          Term::App(fun, arg) => {
-            let thunk = (arg, env.clone());
-            args.push(thunk);
-            cont_stack.push(State::Eval(fun, env, args));
-          },
-          Term::Lam(bod) => {
-            if args.len() == 0 {
-              ret_stack.push(vlam(bod, env.clone(), heap));
-            }
-            else {
-              let thunk = args.pop().unwrap();
-              cont_stack.push(State::EvalPlus(bod, env, args));
-              force(&mut cont_stack, thunk);
-            }
-          },
-          Term::Var(idx) => {
-            cont_stack.push(State::Apply(args));
-            let dep = env.len() - 1 - idx;
-            let value = env[dep];
-            ret_stack.push(value);
-          },
-          Term::Int(int) => {
-            let value = papp(Neutral::Int(int), args, heap);
-            ret_stack.push(value);
-          },
-          Term::Ref(idx) => {
-            env.clear();
-            cont_stack.push(State::Eval(idx, env, args))
-          },
-          Term::Add(val1, val2) => {
-            let ptr1 = env[env.len() - 1 - val1];
-            let ptr2 = env[env.len() - 1 - val2];
-            match (&heap[ptr1], &heap[ptr2]) {
-              (Value::Papp(Neutral::Int(num1), p_args1),
-               Value::Papp(Neutral::Int(num2), p_args2))
-                if p_args1.is_empty() && p_args2.is_empty() => {
-                  ret_stack.push(papp(Neutral::Int(num1+num2), args, heap))
-                }
-              _ => ret_stack.push(papp(Neutral::Add(Box::new((val1, val2))), args, heap)),
-            }
-          },
-          Term::Sub(val1, val2) => {
-            let ptr1 = env[env.len() - 1 - val1];
-            let ptr2 = env[env.len() - 1 - val2];
-            match (&heap[ptr1], &heap[ptr2]) {
-              (Value::Papp(Neutral::Int(num1), p_args1),
-               Value::Papp(Neutral::Int(num2), p_args2))
-                if p_args1.is_empty() && p_args2.is_empty() => {
-                  ret_stack.push(papp(Neutral::Int(num1-num2), args, heap))
-                }
-              _ => ret_stack.push(papp(Neutral::Sub(Box::new((val1, val2))), args, heap)),
-            }
-          },
-          Term::Mul(val1, val2) => {
-            let ptr1 = env[env.len() - 1 - val1];
-            let ptr2 = env[env.len() - 1 - val2];
-            match (&heap[ptr1], &heap[ptr2]) {
-              (Value::Papp(Neutral::Int(num1), p_args1),
-               Value::Papp(Neutral::Int(num2), p_args2))
-                if p_args1.is_empty() && p_args2.is_empty() => {
-                  ret_stack.push(papp(Neutral::Int(num1*num2), args, heap))
-                }
-              _ => ret_stack.push(papp(Neutral::Mul(Box::new((val1, val2))), args, heap)),
-            }
-          },
-          Term::Eqz(val1, case1, case2) => {
-            let ptr1 = env[env.len() - 1 - val1];
-            match &heap[ptr1] {
-              Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
-                if *num == 0 {
-                  cont_stack.push(State::Eval(case1, env, args));
-                }
-                else {
-                  cont_stack.push(State::Eval(case2, env, args));
-                }
-              },
-              _ => {
-                let case1 = (case1, env.clone());
-                let case2 = (case2, env.clone());
-                ret_stack.push(papp(Neutral::Eqz(Box::new((val1, case1, case2))), args, heap))
-              },
-            }
-          },
-          Term::Impossible => unreachable!(),
-        }
-      },
-      State::Apply(mut args) => {
-        if args.len() == 0 {
-          // Does nothing
-        }
-        else {
-          match &heap[ret_stack.pop().unwrap()] {
-            Value::Papp(neu, p_args) => {
-              args.extend_from_slice(&p_args);
-              ret_stack.push(papp(neu.clone(), args, heap));
-            },
-            Value::VLam(bod, lam_env) => {
-              let thunk = args.pop().unwrap();
-              cont_stack.push(State::EvalPlus(*bod, lam_env.clone(), args));
-              force(&mut cont_stack, thunk);
-            },
-          }
-        }
-      },
-      State::RETURN => return ret_stack.pop().unwrap(),
     }
   }
 }
