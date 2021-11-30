@@ -9,8 +9,8 @@ use crate::block::*;
 #[derive(Debug, Clone)]
 pub enum Value {
   VNeu(Neutral),
-  Papp(Neutral, Args),
-  VLam(TermPtr, Env),
+  Papp(Box<(Neutral, Args)>),
+  VLam(Box<(TermPtr, Env)>),
 }
 
 #[derive(Debug, Clone)]
@@ -34,13 +34,13 @@ pub fn vneu(neu: Neutral, heap: &mut Heap) -> ValuePtr {
 
 #[inline(always)]
 pub fn papp(neu: Neutral, args: Args, heap: &mut Heap) -> ValuePtr {
-  heap.push(Value::Papp(neu, args));
+  heap.push(Value::Papp(Box::new((neu, args))));
   (heap.len()-1) as ValuePtr
 }
 
 #[inline(always)]
 pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
-  heap.push(Value::VLam(term, env));
+  heap.push(Value::VLam(Box::new((term, env))));
   (heap.len()-1) as ValuePtr
 }
 
@@ -110,7 +110,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       }
       else {
         match &heap[val as usize] {
-          Value::Papp(neu, p_args) => {
+          Value::Papp(pair) => {
+            let (neu, p_args) = &**pair;
             args.extend_from_slice(p_args);
             let val = papp(neu.clone(), args, heap);
             match cont {
@@ -121,7 +122,8 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
               },
             }
           }
-          Value::VLam(bod, env) => {
+          Value::VLam(pair) => {
+            let (bod, env) = &**pair;
             let mut env = env.clone();
             env.push_front(args.pop().unwrap());
             let term = *bod;
