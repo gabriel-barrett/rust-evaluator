@@ -7,7 +7,7 @@ use evaluator::term::*;
 
 pub fn print_int(val: ValuePtr, heap: &mut Heap) {
   match &heap[val as usize] {
-    Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
+    Value::VNeu(Neutral::Int(num)) => {
       println!("int {}", num)
     },
     _ => println!("other"),
@@ -33,7 +33,6 @@ fn main() {
     };
   }
 
-
   let add_t = lam!(lam!(Term::Add(1, 0)));
   let sub_t = lam!(lam!(Term::Sub(1, 0)));
   let cons_t = lam!(lam!(lam!(lam!(app!(app!(Term::Var(0), Term::Var(3)), app!(app!(Term::Var(2), Term::Var(1)), Term::Var(0)))))));
@@ -44,7 +43,6 @@ fn main() {
   let list_t = app!(app!(Term::Ref(4), Term::Ref(6)), Term::Int(1));
   let main_t = app!(Term::Ref(5), Term::Ref(7));
   let defs = vec![add_t, sub_t, cons_t, nil_t, repeat_t, sum_t, val_t, list_t, main_t];
-
 
   let (store, defs) = defs_to_store(&defs);
   let env = Vector::new();

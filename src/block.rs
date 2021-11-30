@@ -33,16 +33,6 @@ pub fn tvar(idx: EnvPtr, store: &mut Store) -> TermPtr {
   (store.len()-1) as TermPtr
 }
 #[inline(always)]
-pub fn tlam(bod: TermPtr, store: &mut Store) -> TermPtr {
-  store.push(Block::Lam(bod));
-  (store.len()-1) as TermPtr
-}
-#[inline(always)]
-pub fn tapp(fun: TermPtr, arg: TermPtr, store: &mut Store) -> TermPtr {
-  store.push(Block::App(fun, arg));
-  (store.len()-1) as TermPtr
-}
-#[inline(always)]
 pub fn tref(idx: TermPtr, store: &mut Store) -> TermPtr {
   store.push(Block::Ref(idx));
   (store.len()-1) as TermPtr
@@ -65,11 +55,6 @@ pub fn tsub(arg1: EnvPtr, arg2: EnvPtr, store: &mut Store) -> TermPtr {
 #[inline(always)]
 pub fn tmul(arg1: EnvPtr, arg2: EnvPtr, store: &mut Store) -> TermPtr {
   store.push(Block::Mul(arg1, arg2));
-  (store.len()-1) as TermPtr
-}
-#[inline(always)]
-pub fn teqz(arg1: EnvPtr, arg2: TermPtr, arg3: TermPtr, store: &mut Store) -> TermPtr {
-  store.push(Block::Eqz(arg1, arg2, arg3));
   (store.len()-1) as TermPtr
 }
 #[inline(always)]
