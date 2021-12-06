@@ -5,15 +5,6 @@ use evaluator::strict::*;
 use evaluator::block::*;
 use evaluator::term::*;
 
-pub fn print_int(val: ValuePtr, heap: &mut Heap) {
-  match &heap[val as usize] {
-    Value::VNeu(Neutral::Int(num)) => {
-      println!("int {}", num)
-    },
-    _ => println!("other"),
-  }
-}
-
 fn main() {
   macro_rules! lam {
     ($bod:expr) => {
@@ -35,13 +26,15 @@ fn main() {
 
   let add_t = lam!(lam!(Term::Add(1, 0)));
   let sub_t = lam!(lam!(Term::Sub(1, 0)));
-  let cons_t = lam!(lam!(lam!(lam!(app!(app!(Term::Var(0), Term::Var(3)), app!(app!(Term::Var(2), Term::Var(1)), Term::Var(0)))))));
+  let cons_t = lam!(lam!(lam!(lam!(app!(app!(Term::Var(0), Term::Var(3)), Term::Var(2))))));
   let nil_t  = lam!(lam!(Term::Var(1)));
   let repeat_t = lam!(lam!(app!(lam!(eqz!(0, Term::Ref(3), app!(app!(Term::Ref(2), Term::Var(1)), app!(app!(Term::Ref(4), app!(app!(Term::Ref(1), Term::Var(2)), Term::Int(1))), Term::Var(1))))), Term::Var(1))));
-  let sum_t = lam!(app!(app!(Term::Var(0), Term::Int(0)), lam!(lam!(app!(app!(Term::Ref(0), Term::Var(1)), Term::Var(0))))));
+  // let sum_t = lam!(app!(app!(Term::Var(0), Term::Int(0)), lam!(lam!(app!(app!(Term::Ref(0), Term::Var(1)), app!(Term::Ref(5), Term::Var(0)))))));
+  let sum_t = lam!(lam!(app!(app!(Term::Var(1), Term::Var(0)), lam!(lam!(app!(app!(Term::Ref(5), Term::Var(0)), app!(app!(Term::Ref(0), Term::Var(1)), Term::Var(2))))))));
   let val_t = Term::Int(500000);
   let list_t = app!(app!(Term::Ref(4), Term::Ref(6)), Term::Int(1));
-  let main_t = app!(Term::Ref(5), Term::Ref(7));
+  // let main_t = app!(Term::Ref(5), Term::Ref(7));
+  let main_t = app!(app!(Term::Ref(5), Term::Ref(7)), Term::Int(0));
   let defs = vec![add_t, sub_t, cons_t, nil_t, repeat_t, sum_t, val_t, list_t, main_t];
 
   let (store, defs) = defs_to_store(&defs);
@@ -49,5 +42,6 @@ fn main() {
   let args = vec![];
   let mut heap = vec![];
   let cont = None;
-  print_int(eval(&store, &mut heap, defs[8], env, args, cont), &mut heap);
+  let val = eval(&store, &mut heap, defs[8], env, args, cont);
+  println!("{:?}", heap[val as usize]);
 }
