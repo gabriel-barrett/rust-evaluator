@@ -2,7 +2,7 @@ use std::{
   vec::Vec,
   boxed::Box,
 };
-use tailcall::tailcall;
+use tailcall::trampoline;
 use im::Vector;
 use crate::block::*;
 
@@ -65,8 +65,23 @@ pub struct Node {
   cont: Continuation,
 }
 
-#[tailcall]
-pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut args: Args, mut cont: Continuation) -> ValuePtr {
+#[inline(always)]
+fn cont_or_ret<'a>(
+  store: &'a Store, heap: &'a mut Heap, val: ValuePtr, cont: Continuation
+) -> trampoline::Next<(&'a Store, &'a mut Heap, TermPtr, Env, Args, Continuation), ValuePtr> {
+  match cont {
+    None => trampoline::Finish(val),
+    Some(mut ctx) => {
+      ctx.args.push(val);
+      trampoline::Recurse((store, heap, ctx.term, ctx.env, ctx.args, ctx.cont))
+    },
+  }
+}
+
+#[inline(always)]
+pub fn eval_step<'a>(
+  (store, heap, term, mut env, mut args, mut cont): (&'a Store, &'a mut Heap, TermPtr, Env, Args, Continuation)
+) -> trampoline::Next<(&'a Store, &'a mut Heap, TermPtr, Env, Args, Continuation), ValuePtr> {
   match store[term as usize] {
     Block::App(fun, arg) => {
       cont = Some(
@@ -77,36 +92,24 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
           cont,
         })
       );
-      eval(store, heap, arg, env, vec![], cont)
+      trampoline::Recurse((store, heap, arg, env, vec![], cont))
     },
     Block::Lam(bod) => {
       match args.pop() {
         Some(arg) => {
           env.push_front(arg);
-          eval (store, heap, bod, env, args, cont)
+          trampoline::Recurse((store, heap, bod, env, args, cont))
         },
         None => {
           let val = vlam(bod, env, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         },
       }
     },
     Block::Var(idx) => {
       let val = env[idx as usize];
       if args.is_empty() {
-        match cont {
-          None => val,
-          Some(mut ctx) => {
-            ctx.args.push(val);
-            eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-          },
-        }
+	cont_or_ret(store, heap, val, cont)
       }
       else {
         match &heap[val as usize] {
@@ -114,46 +117,28 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
             let (neu, p_args) = &**pair;
             args.extend_from_slice(p_args);
             let val = papp(neu.clone(), args, heap);
-            match cont {
-              None => val,
-              Some(mut ctx) => {
-                ctx.args.push(val);
-                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-              },
-            }
+	    cont_or_ret(store, heap, val, cont)
           }
           Value::VLam(pair) => {
             let (bod, env) = &**pair;
             let mut env = env.clone();
             env.push_front(args.pop().unwrap());
             let term = *bod;
-            eval(store, heap, term, env, args, cont)
+            trampoline::Recurse((store, heap, term, env, args, cont))
           },
           Value::VNeu(neu) => {
             let val = vneu_or_papp(neu.clone(), args, heap);
-            match cont {
-              None => val,
-              Some(mut ctx) => {
-                ctx.args.push(val);
-                eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-              },
-            }
+	    cont_or_ret(store, heap, val, cont)
           }
         }
       }
     },
     Block::Int(int) => {
       let val = vneu_or_papp(Neutral::Int(int), args, heap);
-      match cont {
-        None => val,
-        Some(mut ctx) => {
-          ctx.args.push(val);
-          eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-        },
-      }
+      cont_or_ret(store, heap, val, cont)
     },
     Block::Ref(idx) => {
-      eval(store, heap, idx, Vector::new(), args, cont)
+      trampoline::Recurse((store, heap, idx, Vector::new(), args, cont))
     },
     Block::Add(idx1, idx2) => {
       let val1 = env[idx1 as usize];
@@ -161,23 +146,11 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       match (&heap[val1 as usize], &heap[val2 as usize]) {
         (Value::VNeu(Neutral::Int(a)), Value::VNeu(Neutral::Int(b))) => {
           let val = vneu_or_papp(Neutral::Int(a+b), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         }
         _ => {
           let val = vneu_or_papp(Neutral::Add(Box::new((val1, val2))), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         },
       }
     },
@@ -187,23 +160,11 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       match (&heap[val1 as usize], &heap[val2 as usize]) {
         (Value::VNeu(Neutral::Int(a)), Value::VNeu(Neutral::Int(b))) => {
           let val = vneu_or_papp(Neutral::Int(a-b), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         }
         _ => {
           let val = vneu_or_papp(Neutral::Sub(Box::new((val1, val2))), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         },
       }
     },
@@ -213,23 +174,11 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       match (&heap[val1 as usize], &heap[val2 as usize]) {
         (Value::VNeu(Neutral::Int(a)), Value::VNeu(Neutral::Int(b))) => {
           let val = vneu_or_papp(Neutral::Int(a*b), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         }
         _ => {
           let val = vneu_or_papp(Neutral::Mul(Box::new((val1, val2))), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         },
       }
     },
@@ -238,24 +187,22 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, mut env: Env, mut arg
       match &heap[val as usize] {
         Value::VNeu(Neutral::Int(a)) => {
           if *a == 0 {
-            eval(store, heap, case1, env, args, cont)
+            trampoline::Recurse((store, heap, case1, env, args, cont))
           }
           else {
-            eval(store, heap, case2, env, args, cont)
+            trampoline::Recurse((store, heap, case2, env, args, cont))
           }
         }
         _ => {
           let val = vneu_or_papp(Neutral::Eqz(Box::new((idx, env, case1, case2))), args, heap);
-          match cont {
-            None => val,
-            Some(mut ctx) => {
-              ctx.args.push(val);
-              eval(store, heap, ctx.term, ctx.env, ctx.args, ctx.cont)
-            },
-          }
+	  cont_or_ret(store, heap, val, cont)
         },
       }
     },
     Block::Impossible => unreachable!(),
   }
+}
+
+pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr, env: Env, args: Args) -> ValuePtr {
+  trampoline::run(eval_step, (store, heap, term, env, args, None))
 }

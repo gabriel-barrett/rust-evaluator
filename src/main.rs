@@ -41,7 +41,6 @@ fn main() {
   let env = Vector::new();
   let args = vec![];
   let mut heap = vec![];
-  let cont = None;
-  let val = eval(&store, &mut heap, defs[8], env, args, cont);
+  let val = eval(&store, &mut heap, defs[8], env, args);
   println!("{:?}", heap[val as usize]);
 }
