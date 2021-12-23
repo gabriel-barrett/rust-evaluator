@@ -44,6 +44,7 @@ pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
   (heap.len()-1) as ValuePtr
 }
 
+#[inline(always)]
 pub fn vneu_or_papp(neu: Neutral, args: Args, heap: &mut Heap) -> ValuePtr {
   if args.len() == 0 {
     vneu(neu, heap)
