@@ -72,6 +72,7 @@ pub fn eval_step<'a>(
       args.push((arg, env.clone()));
       trampoline::Recurse((store, heap, fun, env, args, cont))
     },
+    Block::SLam(bod) |
     Block::Lam(bod) => {
       match args.pop() {
         Some((exp, exp_env)) => {

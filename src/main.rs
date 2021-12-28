@@ -12,6 +12,12 @@ fn main() {
     };
   }
 
+  macro_rules! slam {
+    ($bod:expr) => {
+      Term::SLam(Box::new($bod))
+    };
+  }
+
   macro_rules! app {
     ($fun:expr, $arg:expr) => {
       Term::App(Box::new($fun), Box::new($arg))
@@ -24,11 +30,11 @@ fn main() {
     };
   }
 
-  let add_t = lam!(lam!(Term::Add(1, 0)));
-  let sub_t = lam!(lam!(Term::Sub(1, 0)));
+  let add_t = slam!(slam!(Term::Add(1, 0)));
+  let sub_t = slam!(slam!(Term::Sub(1, 0)));
   let cons_t = lam!(lam!(lam!(lam!(app!(app!(Term::Var(0), Term::Var(3)), Term::Var(2))))));
   let nil_t  = lam!(lam!(Term::Var(1)));
-  let repeat_t = lam!(lam!(app!(lam!(eqz!(0, Term::Ref(3), app!(app!(Term::Ref(2), Term::Var(1)), app!(app!(Term::Ref(4), app!(app!(Term::Ref(1), Term::Var(2)), Term::Int(1))), Term::Var(1))))), Term::Var(1))));
+  let repeat_t = lam!(lam!(app!(slam!(eqz!(0, Term::Ref(3), app!(app!(Term::Ref(2), Term::Var(1)), app!(app!(Term::Ref(4), app!(app!(Term::Ref(1), Term::Var(2)), Term::Int(1))), Term::Var(1))))), Term::Var(1))));
   // let sum_t = lam!(app!(app!(Term::Var(0), Term::Int(0)), lam!(lam!(app!(app!(Term::Ref(0), Term::Var(1)), app!(Term::Ref(5), Term::Var(0)))))));
   let sum_t = lam!(lam!(app!(app!(Term::Var(1), Term::Var(0)), lam!(lam!(app!(app!(Term::Ref(5), Term::Var(0)), app!(app!(Term::Ref(0), Term::Var(1)), Term::Var(2))))))));
   let val_t = Term::Int(500000);

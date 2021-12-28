@@ -95,6 +95,7 @@ pub fn eval_step<'a>(
       );
       trampoline::Recurse((store, heap, arg, env, vec![], cont))
     },
+    Block::SLam(bod) |
     Block::Lam(bod) => {
       match args.pop() {
         Some(arg) => {

@@ -5,6 +5,7 @@ pub enum Block {
   // Lambda calculus constructs
   Var(EnvPtr),
   Lam(TermPtr),
+  SLam(TermPtr),
   App(TermPtr, TermPtr),
   // Reference to global definitions
   Ref(TermPtr),
@@ -87,6 +88,14 @@ pub fn term_to_store(store: &mut Store, map: &Vec<TermPtr>, term: &Term) -> Term
       store.push(Block::Impossible);
       term_to_store(store, map, bod);
       store[lam_pos] = Block::Lam(bod_pos as TermPtr);
+      lam_pos as TermPtr
+    },
+    Term::SLam(bod) => {
+      let lam_pos = store.len();
+      let bod_pos = lam_pos+1;
+      store.push(Block::Impossible);
+      term_to_store(store, map, bod);
+      store[lam_pos] = Block::SLam(bod_pos as TermPtr);
       lam_pos as TermPtr
     },
     Term::App(fun, arg) => {

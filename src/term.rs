@@ -5,6 +5,7 @@ pub enum Term {
   // Lambda calculus constructs
   Var(EnvPtr),
   Lam(Box<Term>),
+  SLam(Box<Term>),
   App(Box<Term>, Box<Term>),
   // Reference to global definitions
   Ref(DefPtr),
