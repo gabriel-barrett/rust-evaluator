@@ -1,78 +1,49 @@
-use evaluator::strict::*;
+use std::boxed::Box;
+
+use evaluator::semi_strict::*;
+use evaluator::block::*;
 use evaluator::term::*;
 
 fn main() {
-  let mut store = vec![];
-  // Macro to help building terms manually
-  macro_rules! var {
-    ($idx:expr) => {
-      tvar($idx, &mut store)
-    };
-  }
   macro_rules! lam {
     ($bod:expr) => {
-      tlam($bod, &mut store)
+      Term::Lam(Box::new($bod))
     };
   }
+
+  macro_rules! slam {
+    ($bod:expr) => {
+      Term::SLam(Box::new($bod))
+    };
+  }
+
   macro_rules! app {
     ($fun:expr, $arg:expr) => {
-      tapp($fun, $arg, &mut store)
+      Term::App(Box::new($fun), Box::new($arg))
     };
   }
-  macro_rules! refr {
-    ($idx:expr) => {
-      tref($idx, &mut store)
-    };
-  }
-  macro_rules! int {
-    ($num:expr) => {
-      tint($num, &mut store)
-    };
-  }
-  macro_rules! add {
-    ($arg1:expr, $arg2:expr) => {
-      tadd($arg1, $arg2, &mut store)
-    };
-  }
-  macro_rules! sub {
-    ($arg1:expr, $arg2:expr) => {
-      tsub($arg1, $arg2, &mut store)
-    };
-  }
+
   macro_rules! eqz {
-    ($arg1:expr, $arg2:expr, $arg3:expr) => {
-      teqz($arg1, $arg2, $arg3, &mut store)
+    ($idx:expr, $case1:expr, $case2:expr) => {
+      Term::Eqz($idx, Box::new($case1), Box::new($case2))
     };
   }
 
-  let add = lam!(lam!(add!(1, 0)));
-  let sub = lam!(lam!(sub!(1, 0)));
-  let cons_t = lam!(lam!(lam!(lam!(app!(app!(var!(0), var!(3)), app!(app!(var!(2), var!(1)), var!(0)))))));
-  let nil_t  = lam!(lam!(var!(1)));
+  let add_t = slam!(slam!(Term::Add(1, 0)));
+  let sub_t = slam!(slam!(Term::Sub(1, 0)));
+  let cons_t = lam!(lam!(lam!(lam!(app!(app!(Term::Var(0), Term::Var(3)), Term::Var(2))))));
+  let nil_t  = lam!(lam!(Term::Var(1)));
+  let repeat_t = lam!(lam!(app!(slam!(eqz!(0, Term::Ref(3), app!(app!(Term::Ref(2), Term::Var(1)), app!(app!(Term::Ref(4), app!(app!(Term::Ref(1), Term::Var(2)), Term::Int(1))), Term::Var(1))))), Term::Var(1))));
+  // let sum_t = lam!(app!(app!(Term::Var(0), Term::Int(0)), lam!(lam!(app!(app!(Term::Ref(0), Term::Var(1)), app!(Term::Ref(5), Term::Var(0)))))));
+  let sum_t = lam!(lam!(app!(app!(Term::Var(1), Term::Var(0)), lam!(lam!(app!(app!(Term::Ref(5), Term::Var(0)), app!(app!(Term::Ref(0), Term::Var(1)), Term::Var(2))))))));
+  let val_t = Term::Int(500000);
+  let list_t = app!(app!(Term::Ref(4), Term::Ref(6)), Term::Int(1));
+  // let main_t = app!(Term::Ref(5), Term::Ref(7));
+  let main_t = app!(app!(Term::Ref(5), Term::Ref(7)), Term::Int(0));
+  let defs = vec![add_t, sub_t, cons_t, nil_t, repeat_t, sum_t, val_t, list_t, main_t];
 
-  // repeat is recursive, so the recursive call will be replaced with impossible until we know the index of repeat
-  let repeat_t =
-    lam!(lam!(
-      app!(
-        lam!(eqz!(0,
-                  refr!(nil_t),
-                  app!(app!(refr!(cons_t), var!(1)), app!(app!(timp(&mut store), app!(app!(refr!(sub), var!(2)), int!(1))), var!(1))))),
-        var!(1))));
-  for i in 0..store.len() {
-    match store[i] {
-      Term::Impossible => (),
-      _ => continue,
-    };
-    store[i] = Term::Ref(repeat_t)
-  }
-
-  // \xs -> xs 0 (\x rec -> add x rec)
-  let sum_t = lam!(app!(app!(var!(0), int!(0)), lam!(lam!(app!(app!(refr!(add), var!(1)), var!(0))))));
-  let val_t = int!(500000);
-  let list_t = app!(app!(refr!(repeat_t), refr!(val_t)), int!(1));
-  let main_t = app!(refr!(sum_t), refr!(list_t));
-
+  let (store, defs) = defs_to_store(&defs);
   let mut heap = vec![];
-  let val = eval(&store, &mut heap, main_t);
+  let val = eval(&store, &mut heap, defs[8]);
   println!("{:?}", heap[val as usize]);
 }

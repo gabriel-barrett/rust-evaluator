@@ -4,7 +4,7 @@ use std::{
   boxed::Box,
 };
 use im::Vector;
-use crate::term::*;
+use crate::block::*;
 
 pub type Env = Vector<ValuePtr>;
 pub type Args = Vec<ValuePtr>;
@@ -29,7 +29,7 @@ pub fn vlam(term: TermPtr, env: Env, heap: &mut Heap) -> ValuePtr {
 
 #[derive(Debug, Clone)]
 pub enum Neutral {
-  FVar(EnvPtr),
+  FVar(u32),
   Int(i64),
   Add(Box<(ValuePtr, ValuePtr)>),
   Mul(Box<(ValuePtr, ValuePtr)>),
@@ -56,7 +56,6 @@ pub union InnerState {
     ret: ManuallyDrop<(TermPtr, Env)>,
     arg: ValuePtr,
 }
-
 
 #[inline]
 pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
@@ -86,12 +85,13 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
   let mut stack = vec![];
   loop {
     match store[node as usize] {
-      Term::App(fun, arg) => {
+      Block::App(fun, arg) => {
         let inner = InnerState{ ret: ManuallyDrop::new((fun, env.clone())) };
         stack.push(State { kind: Kind::Ret, inner });
         node = arg;
       },
-      Term::Lam(bod) => {
+      Block::SLam(bod) |
+      Block::Lam(bod) => {
         match stack.last_mut() {
           Some(State { kind: Kind::Arg, inner }) => {
             node = bod;
@@ -111,7 +111,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
         }
       },
-      Term::Var(idx) => {
+      Block::Var(idx) => {
         let value = env[env.len() - 1 - idx as usize];
         match stack.last_mut() {
           Some(State { kind: Kind::Arg, inner }) => {
@@ -141,15 +141,15 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
         }
       },
-      Term::Ref(idx) => {
+      Block::Ref(idx) => {
         node = idx;
       },
-      Term::Int(num) => {
+      Block::Int(num) => {
         let neu = Neutral::Int(num);
         let mut args = vec![];
         apply!(heap, stack, node, env, neu, args);
       },
-      Term::Add(idx1, idx2) => {
+      Block::Add(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1 as usize];
         let val2 = env[env.len() - 1 - idx2 as usize];
         let neu = match (&heap[val1 as usize], &heap[val2 as usize]) {
@@ -161,7 +161,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
         let mut args = vec![];
         apply!(heap, stack, node, env, neu, args);
       },
-      Term::Mul(idx1, idx2) => {
+      Block::Mul(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1 as usize];
         let val2 = env[env.len() - 1 - idx2 as usize];
         let neu = match (&heap[val1 as usize], &heap[val2 as usize]) {
@@ -173,7 +173,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
         let mut args = vec![];
         apply!(heap, stack, node, env, neu, args);
       },
-      Term::Sub(idx1, idx2) => {
+      Block::Sub(idx1, idx2) => {
         let val1 = env[env.len() - 1 - idx1 as usize];
         let val2 = env[env.len() - 1 - idx2 as usize];
         let neu = match (&heap[val1 as usize], &heap[val2 as usize]) {
@@ -185,7 +185,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
         let mut args = vec![];
         apply!(heap, stack, node, env, neu, args);
       },
-      Term::Eqz(idx, case1, case2) => {
+      Block::Eqz(idx, case1, case2) => {
         let val = env[env.len() - 1 - idx as usize];
         match &heap[val as usize] {
           Value::Papp(Neutral::Int(num), p_args) if p_args.is_empty() => {
@@ -203,9 +203,7 @@ pub fn eval(store: &Store, heap: &mut Heap, term: TermPtr) -> ValuePtr {
           },
         }
       },
-      Term::Impossible => {
-        unreachable!()
-      },
+      Block::Impossible => unreachable!(),
     }
   }
 }
