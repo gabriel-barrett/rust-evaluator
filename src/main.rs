@@ -1,6 +1,6 @@
 use std::boxed::Box;
 
-use evaluator::semi_strict::*;
+use evaluator::lazy::*;
 use evaluator::block::*;
 use evaluator::term::*;
 
